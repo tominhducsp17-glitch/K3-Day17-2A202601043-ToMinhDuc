@@ -81,13 +81,28 @@ def generate_reply(
     contents = _to_contents(history)
     contents.append({"role": "user", "parts": [{"text": grounding}]})
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            temperature=0.3,
-            max_output_tokens=800,
-        ),
-    )
-    return (getattr(response, "text", "") or "").strip()
+    models_to_try = [model_name, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    # Remove duplicates preserving order
+    seen = set()
+    candidate_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
+
+    last_error: Exception | None = None
+    for cand in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=cand,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.3,
+                    max_output_tokens=800,
+                ),
+            )
+            return (getattr(response, "text", "") or "").strip()
+        except Exception as err:
+            last_error = err
+            continue
+
+    if last_error:
+        raise last_error
+    return ""
